@@ -1,0 +1,274 @@
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8"> <!-- Кодировка документа UTF-8 -->
+    <title>Drum Exercise Mobile</title> <!-- Заголовок вкладки страницы -->
+    <link rel="stylesheet" href="css/style.css"> <!-- Подключение стилей -->
+    <!-- адаптивность -->
+    <meta name="viewport" content="=device-width, initial-scale=1.0"> <!-- Настройка масштабирования для мобильных -->
+  </head>
+
+  <body>
+
+    <div class="sequencer-settings">
+        <!-- Выпадающее меню для выбора ритмического размера упражнения -->
+        <label for="num-blocks">Размер такта</label>
+        <select id="num-blocks">
+          <option value="1">1/4, 4 шага</option>        <!-- 1 доля, 4 шага -->
+          <option value="2">2/4, 8 шагов</option>       <!-- 2 доли, 8 шагов -->
+          <option value="3">3/4, 12 шагов</option>      <!-- 3 доли, 12 шагов -->
+          <option value="4" selected>4/4, 16 шагов</option> <!-- 4 доли, 16 шагов -- выбран по умолчанию -->
+          <option value="5">5/4, 20 шагов</option>      <!-- 5 долей, 20 шагов -->
+        </select>
+
+        <!-- Меню для выбора длительности одной ноты (шаг) -->
+        <label for="note-length" style="margin-left:18px;">Длительность одной ячейки</label>
+        <select id="note-length">
+          <option value="16">1/16 шестнадцатая</option>
+          <option value="8">1/8 восьмая</option>
+          <option value="4">1/4 четверть</option>
+        </select>
+
+        <!-- Кнопка для сохранения упражнения как JSON -->
+        <button id="saveExercise">Сохранить упражнение в JSON</button>
+    </div>
+
+    <!-- Панель инструментов для выбора инструмента -->
+    <div class="instrument-panel" id="instrument-panel">
+        <div class="instrument-btn selected" data-instrument="kick">
+          <img src="assets/instruments/kick.png" alt="kick"/>
+        </div>
+        <div class="instrument-btn" data-instrument="snare">
+          <img src="assets/instruments/snare.png" alt="snare"/>
+        </div>
+        <div class="instrument-btn" data-instrument="hihat">
+          <img src="assets/instruments/hihat.png" alt="hihat"/>
+        </div>
+        <div class="instrument-btn" data-instrument="clap">
+            <img src="assets/instruments/clap.png" alt="clap">
+          </div>          
+        <div class="instrument-btn" data-instrument="erase">
+          <span>✖️</span>
+        </div>
+      </div>
+
+    <!-- Контейнер секвенсора (здесь динамически будут появляться блоки) -->
+    <div class="container">
+      <div class="block-row" id="block-row">
+        <!-- Здесь генерируются блоки (каждый блок — доля, содержащая 4 строки по количеству конечностей/инструментов) -->
+      </div>
+    </div>
+
+    <!-- Панель управления проигрывателем -->
+    <div class="player-panel">
+      <button onclick="startPlayback()">PLAY</button> <!-- Кнопка запуска -->
+      <button onclick="stopPlayback()">STOP</button>  <!-- Кнопка остановки -->
+
+      <label>Tempo: <span id="tempo-display">120</span> BPM</label> <!-- Отображение текущего темпа -->
+      <input type="range" id="tempo-range" min="40" max="240" value="80"> <!-- Слайдер для изменения темпа -->
+    </div>
+
+    <!-- Основные JS-скрипты -->
+    <script>
+      // Глобальные переменные для проигрывания и редактирования
+      let currentStep = 0;                               // текущий шаг проигрывания
+      const stepsPerBlock = 4;                           // количество шагов в 1 блоке
+      let totalSteps = 0;                                // всего шагов (для всего упражнения)
+      let playInterval = null;                           // идентификатор интервала плеера
+      let tempo = 80;                                    // стартовое значение BPM (можно менять)
+      let noteLength = 16;                               // длительность шага (по умолчанию 16я)
+
+      // Рассчитывает длительность одного шага для таймера проигрывателя
+      function getStepInterval() {
+        // 60000 / tempo — длительность ЧЕТВЕРТИ в мс;
+        // 4/noteLength — сколько четвертей занимает один шаг
+        return (60000 / tempo) * (4 / noteLength);
+      }
+
+      // Функция генерации блоков (долей)
+      function generateBlocks(numBlocks) {
+        const container = document.getElementById('block-row'); // Получаем контейнер
+        container.innerHTML = "";                               // Очищаем контейнер
+
+        for (let blockIndex = 0; blockIndex < numBlocks; blockIndex++){
+          const block = document.createElement('div');          // Создаём новый блок
+          block.classList.add('block');                         // Добавляем класс
+
+          // Номер блока
+          const blockNumber = document.createElement('div');    // Создаём элемент номера блока
+          blockNumber.classList.add('block-number');            // Класс для стиля номера
+          blockNumber.textContent = blockIndex + 1;             // Нумерация с 1
+          block.appendChild(blockNumber);                       // Добавляем номер в блок
+
+          // Создаём 4 ряда (для R, L, RF, LF)
+          for (let rowIndex = 0; rowIndex < 4; rowIndex++){
+            const row = document.createElement('div');          // Новый ряд (одна конечность)
+            row.classList.add('row');                           // Класс для стилей
+
+            // Только у первого блока (blockIndex === 0) добавляем hand-icon
+            if (blockIndex === 0) {
+              const handIcon = document.createElement('div');   // Контейнер для иконки руки/ноги
+              handIcon.classList.add('hand-icon');              // Базовый класс hand-icon
+              let iconClass = '';                               // Переменная для спец-класса (R/L/RF/LF)
+              let iconText = '';                                // Текст на иконке (R/L/RF/LF)
+// Для каждой строки/конечности определяем её тип и вид иконки
+if (rowIndex === 0) {
+    iconClass = 'hand-icon-R';     // Правая рука
+    iconText = 'R';
+  } else if (rowIndex === 1) {
+    iconClass = 'hand-icon-L';     // Левая рука
+    iconText = 'L';
+  } else if (rowIndex === 2) {
+    iconClass = 'hand-icon-RF';    // Правая нога
+    iconText = 'RF';
+  } else if (rowIndex === 3) {
+    iconClass = 'hand-icon-LF';    // Левая нога
+    iconText = 'LF';
+  }
+  handIcon.classList.add(iconClass);   // Добавляем специфичный класс для цвета
+  handIcon.textContent = iconText;     // Текст на иконке
+  row.appendChild(handIcon);           // Вставляем иконку в начало ряда
+}
+
+// Создаем 4 ячейки (шаги) в каждом ряду, по числу stepsPerBlock (4)
+for (let cellIndex = 0; cellIndex < stepsPerBlock; cellIndex++){
+  const cell = document.createElement('div');       // Создаём элемент ячейки
+  cell.classList.add('cell');                       // Класс для стилизации
+  cell.addEventListener('click', () => {            // При клике по ячейке
+    cell.classList.toggle('filled');                // Меняем заливку (вкл/выкл)
+  });
+  row.appendChild(cell);                            // Добавляем ячейку в ряд
+}
+
+block.appendChild(row);         // Добавляем ряд в блок
+}
+
+container.appendChild(block);   // Блок добавляется в контейнер
+}
+
+// Обновляем общее число шагов для всей секвенции
+totalSteps = numBlocks * stepsPerBlock;
+currentStep = 0;               // Сбрасываем текущий шаг к началу
+}
+// Функция проигрывания одного шага
+function playStep(step) {
+  // Определяем номер блока и номер шага внутри блока
+  const blockIndex = Math.floor(step / stepsPerBlock);
+  const stepInBlock = step % stepsPerBlock;
+  console.log('stepInBlock', stepInBlock);
+
+  // Получаем список визуальных блоков
+  const blocks = document.querySelectorAll('.block');
+  if (blockIndex >= blocks.length) return; // Защита от выхода за пределы
+
+  const activeBlock = blocks[blockIndex]; // Активный блок по индексу
+  const rows = activeBlock.querySelectorAll('.row'); // Все ряды в блоке
+
+  rows.forEach(row => {
+    const cells = row.querySelectorAll('.cell'); // Все ячейки в ряду
+    if (cells.length > stepInBlock) {
+      const cell = cells[stepInBlock];           // Определяем активную ячейку
+
+      // Если ячейка отмечена как выбранная — можно играть звук
+      if (cell.classList.contains('filled')) {
+        // Вызов функции проигрывания звука (играет, если будет реализовано)
+        // let instrument = row.dataset.instrument; // если добавить data-атрибут
+        // playSound(instrument);                   // здесь должен быть звуковой движок
+        console.log('Воспроизведение звука в блоке', blockIndex+1, 'шаг', stepInBlock+1);
+      }
+
+      // Для эффекта подсвечиваем активную ячейку на короткое время
+      cell.classList.add('active');
+      setTimeout(() => cell.classList.remove('active'), 150);
+    }
+  });
+}
+// Функция проигрывания одного шага
+function playStep(step) {
+  // Определяем номер блока и номер шага внутри блока
+  const blockIndex = Math.floor(step / stepsPerBlock);
+  const stepInBlock = step % stepsPerBlock;
+  console.log('stepInBlock', stepInBlock);
+
+  // Получаем список визуальных блоков
+  const blocks = document.querySelectorAll('.block');
+  if (blockIndex >= blocks.length) return; // Защита от выхода за пределы
+
+  const activeBlock = blocks[blockIndex]; // Активный блок по индексу
+  const rows = activeBlock.querySelectorAll('.row'); // Все ряды в блоке
+
+  rows.forEach(row => {
+    const cells = row.querySelectorAll('.cell'); // Все ячейки в ряду
+    if (cells.length > stepInBlock) {
+      const cell = cells[stepInBlock];           // Определяем активную ячейку
+
+      // Если ячейка отмечена как выбранная — можно играть звук
+      if (cell.classList.contains('filled')) {
+        // Вызов функции проигрывания звука (играет, если будет реализовано)
+        // let instrument = row.dataset.instrument; // если добавить data-атрибут
+        // playSound(instrument);                   // здесь должен быть звуковой движок
+        console.log('Воспроизведение звука в блоке', blockIndex+1, 'шаг', stepInBlock+1);
+      }
+
+      // Для эффекта подсвечиваем активную ячейку на короткое время
+      cell.classList.add('active');
+      setTimeout(() => cell.classList.remove('active'), 150);
+    }
+  });
+}
+// Функция запуска проигрывания секвенции
+function startPlayback() {
+  stopPlayback();                   // Остановить старый цикл, если был
+
+  let intervalTime = getStepInterval(); // Получить задержку между шагами
+
+  playInterval = setInterval(() => {    // запуск цикла по таймеру
+    playStep(currentStep);              // сыграть текущий шаг
+    currentStep = (currentStep + 1) % totalSteps; // следующий шаг, обнулить если дошли до конца
+  }, intervalTime);
+}
+// Функция остановки воспроизведения
+function stopPlayback() {
+  if (playInterval) {                  // Если таймер был запущен,
+    clearInterval(playInterval);        // Остановить его
+    playInterval = null;                // Очистить переменную управления таймером
+  }
+}
+// При изменении числа блоков (размера такта)
+document.getElementById('num-blocks').addEventListener('change', (e) => {
+  const numBlocks = parseInt(e.target.value); // Новое число блоков
+  generateBlocks(numBlocks);                  // Сгенерировать новую сетку
+});
+// При изменении темпа (BPM)
+document.getElementById('tempo-range').addEventListener('input', (e) => {
+  tempo = parseInt(e.target.value);  // Новое значение темпа
+  document.getElementById('tempo-display').textContent = tempo; // Отобразить пользователю
+
+  // Если сейчас играет — перезапустить с новым таймингом
+  if (playInterval) {
+    startPlayback();
+  }
+});
+// При изменении длительности ноты (ячейки)
+document.getElementById('note-length').addEventListener('change', (e) => {
+  noteLength = parseInt(e.target.value, 10); // Новое значение длительности
+  if (playInterval) startPlayback();         // Перезапустить плеер с новым интервалом
+});
+// При первичной загрузке страницы
+document.addEventListener('DOMContentLoaded', () => {
+  const defaultBlocks = parseInt(document.getElementById('num-blocks').value); // Узнать выбранный размер по умолчанию
+  generateBlocks(defaultBlocks);      // Отрисовать блоки (секвенсор)
+});
+// Функция playSound можно прописать отдельно
+/*
+function playSound(instrument) {
+   // Например: new Audio("assets/sounds/" + instrument + ".wav").play();
+   // Воспроизводит звук соответствующего инструмента. 
+   // "instrument" — строка ("kick", "snare" и т.д.), подставляется в путь к аудиофайлу.
+}
+*/
+</script>
+<!-- Подключаем оставшиеся скрипты редактора и плеера, если они разделены -->
+<script src="player.js"></script>   <!-- Скрипт проигрывателя — логика воспроизведения, таймер, функции play/stop и др. -->
+<script src="save.js"></script>     <!-- Скрипт сохранения — экспорт данных упражнения, возможно, работа с localStorage или загрузкой файлов. -->
+</body>
+</html>
